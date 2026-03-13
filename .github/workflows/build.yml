@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Final Fix)
+name: Build Redmi 9C Kernel (Dandelion Success)
 
 on:
   workflow_dispatch:
@@ -18,33 +18,35 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix Scripts
+      - name: Fix yylloc and Parser
         run: |
           cd kernel_source
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-parser.tab.c_shipped || true
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel
+      - name: Build Kernel (Force Mode)
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
+          # Force clean and load config
           make ARCH=arm64 clean
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # Force -fcommon to resolve multiple definitions in net/ files
+          # The Ultimate Fix: -fcommon to allow duplicates, -w to ignore warnings, -fno-stack-protector
           make ARCH=arm64 -j$(nproc) \
             HOSTCFLAGS="-fcommon" \
             HOSTCXXFLAGS="-fcommon" \
-            KCFLAGS="-fcommon -w -Wno-error" \
+            KCFLAGS="-fcommon -w -Wno-error -fno-stack-protector" \
             Image.gz DTC_EXT=dtc
 
-      - name: Upload Output
+      - name: Upload Kernel Image
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Result
+          name: Dandelion-Kernel-Final
           path: kernel_source/arch/arm64/boot/Image.gz
