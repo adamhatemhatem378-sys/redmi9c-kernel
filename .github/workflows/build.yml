@@ -19,14 +19,16 @@ jobs:
           git config --global http.postBuffer 524288000
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Clean and Fix Source Code
+      - name: Fix Source Code (yylloc definitive fix)
         run: |
           cd kernel_source
-          # Remove problematic yylloc lines to prevent 'multiple definition' or 'duplicate extern'
+          # Remove any previous problematic definitions
           sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.l
           sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.lex.c_shipped
-          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-parser.tab.c_shipped || true
-          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-parser.tab.h_shipped || true
+          # Add a single, correct declaration at the top of the lexer file
+          sed -i '1i YYLTYPE yylloc;' scripts/dtc/dtc-lexer.l
+          # Additional fix for newer GCC versions
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
       - name: Configure and Build
         run: |
@@ -39,10 +41,6 @@ jobs:
           # Find the correct dandelion defconfig
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
-          
-          # Add WiFi drivers
-          echo "CONFIG_RT2X00=y" >> .config
-          echo "CONFIG_RT2800USB=y" >> .config
           
           # Build only the kernel image
           make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon" DTC_EXT=dtc
