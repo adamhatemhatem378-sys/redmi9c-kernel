@@ -9,12 +9,14 @@ jobs:
 
     steps:
       - name: Install Dependencies
-* **sudo apt-get update**
-* **sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler clang lld**
-* **sudo ln -sf /usr/bin/python3 /usr/bin/python**
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler clang lld
+          sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
-* **git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source**
+        run: |
+          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
       - name: Fix Source Code
         run: |
@@ -29,12 +31,14 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
+          # Load config
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # Fix Stack Protector issue for Clang
+          # --- السطور اللي هتحل المشكلة الجديدة ---
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' .config
           sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' .config
+          # ---------------------------------------
 
           make ARCH=arm64 -j$(nproc) \
             CC=clang \
@@ -48,4 +52,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Dandelion-Kernel-Success
-* **path: kernel_source/arch/arm64/boot/Image.gz**
+          path: kernel_source/arch/arm64/boot/Image.gz
