@@ -5,50 +5,42 @@ on:
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04 # Use an older version to avoid GCC conflicts
 
     steps:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python2
 
       - name: Clone Kernel Source
         run: |
-          git config --global http.postBuffer 524288000
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Configure Kernel Drivers
+      - name: Root Fix for yylloc Error
+        run: |
+          cd kernel_source
+          # This command fixes the 'multiple definition of yylloc' error globally
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped || true
+
+      - name: Configure and Build
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          # Use extra compiler flags to allow multiple definitions
+          export KCFLAGS="-fcommon"
           
-          # Smart Search for the correct defconfig file
+          # Find and use the correct defconfig
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
-          echo "Found Defconfig: $CONF_FILE"
-          
-          if [ -z "$CONF_FILE" ]; then
-            echo "Defconfig not found! Checking vendor folder..."
-            CONF_FILE=$(find arch/arm64/configs/vendor/ -name "*dandelion*" | head -n 1 | xargs basename)
-          fi
-
           make ARCH=arm64 $CONF_FILE
           
-          # Enable WiFi drivers directly in .config
-          echo "CONFIG_RT2X00=y" >> .config
-          echo "CONFIG_RT2800USB=y" >> .config
-
-      - name: Start Compilation
-        run: |
-          cd kernel_source
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          # Build Image.gz and bypass dtbo/dtbs errors
-          make ARCH=arm64 -j$(nproc) Image.gz DTC_EXT=dtc || make ARCH=arm64 -j$(nproc) Image.gz
+          # Build only the Image.gz to save time and avoid DTB errors
+          make ARCH=arm64 -j$(nproc) Image.gz KCFLAGS="-fcommon"
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Result
+          name: Dandelion-Kernel-Fixed
           path: kernel_source/arch/arm64/boot/Image.gz
