@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Verified Fix)
+name: Build Redmi 9C Kernel (Android 11 Success)
 
 on:
   workflow_dispatch:
@@ -8,47 +8,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Dependencies
+      - name: Install Build Essentials
         run: |
           sudo apt-get update
-          # إضافة مستودع المكتبات القديمة عشان libncurses5
-          sudo add-apt-repository universe
-          sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 libtinfo5
-          sudo ln -sf /usr/bin/python3 /usr/bin/python
-
-      - name: Clone Toolchain (The Legacy Way)
-        run: |
-          # ده المترجم اللي بيخلص الحوار ده مع شاومي
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $GITHUB_WORKSPACE/toolchain
+          sudo apt-get install -y build-essential bc libssl-dev flex bison git python3 zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses-dev dtc
 
       - name: Clone Kernel Source
         run: |
-          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
+          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-r-oss kernel_source
 
-      - name: Fix DTC Lexer
+      - name: Clone Proton Clang
         run: |
-          cd kernel_source
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-          echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
+          git clone --depth 1 https://github.com/kdrag0n/proton-clang.git clang
 
       - name: Build Kernel
         run: |
           cd kernel_source
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export ARCH=arm64
-          export CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/aarch64-linux-android-
+          export SUBARCH=arm64
           
-          make ARCH=arm64 dandelion_defconfig
+          # إعداد الكروس كومبايلر
+          make O=out ARCH=arm64 dandelion_defconfig
           
-          # سر النجاح: -fcommon لتجاهل تكرار التعريفات في ملفات الـ net
-          make ARCH=arm64 -j$(nproc) \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            KCFLAGS="-fcommon -w -Wno-error" \
-            Image.gz DTC_EXT=dtc
+          # البناء باستخدام Clang مع تجاوز تحذيرات الأمان القديمة
+          make -j$(nproc) O=out \
+              ARCH=arm64 \
+              CC=clang \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              KCFLAGS="-w -fcommon -Wno-error" \
+              Image.gz DTC_EXT=dtc
 
-      - name: Upload Kernel
+      - name: Upload Kernel Image
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Redmi9C-Finished
-          path: kernel_source/arch/arm64/boot/Image.gz
+          name: Dandelion-Kernel-A11
+          path: kernel_source/out/arch/arm64/boot/Image.gz
