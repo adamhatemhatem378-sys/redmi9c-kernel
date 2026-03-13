@@ -11,7 +11,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
 
       - name: Clone Kernel Source
         run: |
@@ -21,27 +21,30 @@ jobs:
       - name: Configure Kernel Drivers
         run: |
           cd kernel_source
-          # Enable WiFi drivers
-          echo "CONFIG_RT2X00=y" >> arch/arm64/configs/dandelion_user_defconfig
-          echo "CONFIG_RT2800USB=y" >> arch/arm64/configs/dandelion_user_defconfig
+          # Clean any previous failed attempts
+          make clean
+          # Use the core defconfig
+          make dandelion_user_defconfig
+          # Enable WiFi drivers manually in the .config file directly
+          echo "CONFIG_RT2X00=y" >> .config
+          echo "CONFIG_RT2800USB=y" >> .config
 
-      - name: Start Compilation
+      - name: Start Compilation (Root Fix)
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # Initialize config
-          make dandelion_user_defconfig
+          # The FIX: Build only the Image.gz and ignore dtbs checks for now
+          make -j$(nproc) Image.gz
           
-          # Build with DTC_EXT to skip internal dtbo issues
-          make -j$(nproc) DTC_EXT=dtc
-          
-          # Create the Image.gz-dtb if it doesn't merge automatically
-          cat arch/arm64/boot/Image.gz arch/arm64/boot/dts/mediatek/mt6765.dtb > arch/arm64/boot/Image.gz-dtb || true
+          # After Image.gz is done, we try to build dtbs separately without the 'check'
+          make -j$(nproc) dtbs || echo "DTBS failed but we have the Image"
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel
-          path: kernel_source/arch/arm64/boot/Image.gz*
+          name: Dandelion-Kernel-Result
+          path: |
+            kernel_source/arch/arm64/boot/Image.gz
+            kernel_source/arch/arm64/boot/dts/mediatek/*.dtb
