@@ -1,11 +1,10 @@
-name: Build Redmi 9C Kernel (Android 11 - Fix Branch)
+name: Build Redmi 9C Kernel (A11 Success Path)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # لازم 22.04 عشان المكتبات موجودة فيها
     runs-on: ubuntu-22.04 
 
     steps:
@@ -17,32 +16,34 @@ jobs:
 
       - name: Download GCC Toolchains
         run: |
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain64
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 toolchain32
+          # تنزيل المترجمات في مسارات واضحة جداً
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $GITHUB_WORKSPACE/tc64
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 $GITHUB_WORKSPACE/tc32
 
       - name: Clone Kernel Source
         run: |
-          # رجعنا للفرع q-oss لأنه هو اللي شغال وموجود فعلياً
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
       - name: Build Kernel
         run: |
           cd kernel_source
           export ARCH=arm64
-          export CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain64/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$GITHUB_WORKSPACE/toolchain32/bin/arm-linux-androideabi-
+          # استخدام المسار المطلق $GITHUB_WORKSPACE بيمنع خطأ No such file
+          export CROSS_COMPILE=$GITHUB_WORKSPACE/tc64/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$GITHUB_WORKSPACE/tc32/bin/arm-linux-androideabi-
           
-          # تعديل الملفات اللي بتعمل Error في الـ Scripts
+          # إصلاح ملفات السكريبتات القديمة
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           
-          # التحميل والبناء
+          # بدء البناء
           make dandelion_defconfig
+          # إضافة -fcommon عشان نعدي الـ Error اللي في ملفات الشبكة (السطر 1758)
           make -j$(nproc) KCFLAGS="-fcommon -w -Wno-error" Image.gz DTC_EXT=dtc
 
       - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Dandelion_A11_Ready
+          name: Kernel_Dandelion_A11_Final
           path: kernel_source/arch/arm64/boot/Image.gz
