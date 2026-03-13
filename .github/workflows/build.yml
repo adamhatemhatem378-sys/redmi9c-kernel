@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Hyper-Stable)
+name: Build Redmi 9C Kernel (Stable)
 
 on:
   workflow_dispatch:
@@ -18,35 +18,33 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix yylloc Definitive
+      - name: Fix yylloc and Scripts
         run: |
           cd kernel_source
-          # This command fixes the duplicate/undeclared yylloc issue
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel
+      - name: Final Build Attempt
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # Clean and load config
-          make ARCH=arm64 clean
+          # Load dandelion config
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # The fix for Net/Built-in error: force common flags and ignore warnings
+          # The Secret: Force common flags to avoid 'multiple definition' errors
           make ARCH=arm64 -j$(nproc) \
             HOSTCFLAGS="-fcommon" \
             HOSTCXXFLAGS="-fcommon" \
             KCFLAGS="-fcommon -w -Wno-error" \
             Image.gz DTC_EXT=dtc
 
-      - name: Upload Kernel
+      - name: Upload Output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Final
+          name: Redmi-9C-Kernel
           path: kernel_source/arch/arm64/boot/Image.gz
