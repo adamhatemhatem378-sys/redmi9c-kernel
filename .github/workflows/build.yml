@@ -23,20 +23,29 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          make clean
-          # Force ARCH=arm64 here to find the correct config file
-          make ARCH=arm64 dandelion_user_defconfig
+          
+          # Smart Search for the correct defconfig file
+          CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
+          echo "Found Defconfig: $CONF_FILE"
+          
+          if [ -z "$CONF_FILE" ]; then
+            echo "Defconfig not found! Checking vendor folder..."
+            CONF_FILE=$(find arch/arm64/configs/vendor/ -name "*dandelion*" | head -n 1 | xargs basename)
+          fi
+
+          make ARCH=arm64 $CONF_FILE
+          
           # Enable WiFi drivers directly in .config
           echo "CONFIG_RT2X00=y" >> .config
           echo "CONFIG_RT2800USB=y" >> .config
 
-      - name: Start Compilation (Root Fix)
+      - name: Start Compilation
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          # Build Image.gz and bypass dtbo_check
-          make ARCH=arm64 -j$(nproc) Image.gz DTC_EXT=dtc
+          # Build Image.gz and bypass dtbo/dtbs errors
+          make ARCH=arm64 -j$(nproc) Image.gz DTC_EXT=dtc || make ARCH=arm64 -j$(nproc) Image.gz
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
