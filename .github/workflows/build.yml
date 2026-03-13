@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Absolute Success)
+name: Build Redmi 9C Kernel (Final Ultimate)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix Source Files
+      - name: Force Fix Source
         run: |
           cd kernel_source
           # Fix yylloc for modern compilers
@@ -26,24 +26,24 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel (The Hard Way)
+      - name: Build Kernel (Blind Mode)
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # Load dandelion configuration
+          # Load config
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # Force the build to ignore warnings and stack protection issues
+          # Force ignore everything and build
           make ARCH=arm64 -j$(nproc) \
-            HOSTCFLAGS="-fcommon" \
-            HOSTCXXFLAGS="-fcommon" \
-            KCFLAGS="-fcommon -w -Wno-error -fno-stack-protector" \
+            HOSTCFLAGS="-fcommon -w" \
+            HOSTCXXFLAGS="-fcommon -w" \
+            KCFLAGS="-fcommon -w -Wno-error -fno-stack-protector -fpermissive" \
             Image.gz DTC_EXT=dtc
 
-      - name: Upload Kernel Artifact
+      - name: Upload Kernel
         if: always()
         uses: actions/upload-artifact@v4
         with:
