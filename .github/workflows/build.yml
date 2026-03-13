@@ -5,48 +5,24 @@ on:
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 python3-dev device-tree-compiler
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
         run: |
-          git config --global http.postBuffer 524288000
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix Source Code (yylloc definitive fix)
+      - name: Root Fixes
         run: |
           cd kernel_source
-          # Remove any previous problematic definitions
-          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.l
-          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.lex.c_shipped
-          # Add a single, correct declaration at the top of the lexer file
-          sed -i '1i YYLTYPE yylloc;' scripts/dtc/dtc-lexer.l
-          # Additional fix for newer GCC versions
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped || true
-
-      - name: Configure and Build
-        run: |
-          cd kernel_source
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export HOSTCFLAGS="-fcommon"
-          export HOSTCXXFLAGS="-fcommon"
-          
-          # Find the correct dandelion defconfig
-          CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
-          make ARCH=arm64 $CONF_FILE
-          
-          # Build only the kernel image
-          make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon" DTC_EXT=dtc
-
-      - name: Upload Kernel Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dandelion-Kernel-Final
-          path: kernel_source/arch/arm64/boot/Image.gz
+          # Fix yylloc
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+          # Fix common compilation errors in old kernels
+          find . -type f -name "Makefile" -exec sed -i '
