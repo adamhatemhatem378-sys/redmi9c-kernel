@@ -16,12 +16,14 @@ jobs:
       - name: Clone Kernel Source
         run: |
           git config --global http.postBuffer 524288000
-          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-p-oss kernel_source
+          # Changed branch name to dandelion-q-oss
+          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
       - name: Configure Kernel Drivers
         run: |
           cd kernel_source
           # Enable WiFi drivers in defconfig
+          # Note: Check if the filename is dandelion_user_defconfig or dandelion_defconfig
           echo "CONFIG_RT2X00=y" >> arch/arm64/configs/dandelion_user_defconfig
           echo "CONFIG_RT2800USB=y" >> arch/arm64/configs/dandelion_user_defconfig
 
@@ -30,6 +32,8 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          
+          # If this step fails, we might need to change the defconfig name
           make dandelion_user_defconfig
           make -j$(nproc)
 
@@ -38,3 +42,4 @@ jobs:
         with:
           name: Dandelion-Kernel
           path: kernel_source/arch/arm64/boot/Image.gz-dtb
+          
