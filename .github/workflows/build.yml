@@ -1,44 +1,42 @@
-name: Build Redmi 9C Kernel (Final Fix)
+name: Build Redmi 9C Kernel (A11 Final)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Setup Environment
+      - name: Setup System
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 lib32z1
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Clone Kernel Source
+      - name: Download GCC
         run: |
-          # تنزيل السورس أولاً
+          # تنزيل المترجم في فولدر ثابت بره وجع الدماغ بتاع الفولدرات المكررة
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $HOME/gcc64
+
+      - name: Clone Source
+        run: |
+          # الفرع ده هو اللي نفع معاك في الكلون قبل كدة
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Download Toolchain Inside Source
-        run: |
-          cd kernel_source
-          # تنزيل المترجم جوه فولدر السورس عشان المسار يبقى محلي 100%
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 tc64
-
-      - name: Build Kernel
+      - name: Build Time
         run: |
           cd kernel_source
           export ARCH=arm64
-          # المسار هنا "local" يعني مفيش مجال للخطأ
-          export CROSS_COMPILE=$(pwd)/tc64/bin/aarch64-linux-android-
+          # استخدام $HOME بيضمن إن المسار ملوش علاقة بالفولدر اللي GitHub بيعمله
+          export CROSS_COMPILE=$HOME/gcc64/bin/aarch64-linux-android-
           
-          # إصلاح ملفات الـ scripts
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-          
+          # تنظيف أي محاولة فاشلة قديمة
+          make clean
           make dandelion_defconfig
-          # استخدام -fcommon عشان نعدي أخطاء التعريفات والشبكة
-          make -j$(nproc) KCFLAGS="-fcommon -w -Wno-error" Image.gz DTC_EXT=dtc
+          
+          # تشغيل البناء مع حل مشكلة الـ net اللي وقفتنا زمان
+          make -j$(nproc) CROSS_COMPILE=$CROSS_COMPILE KCFLAGS="-fcommon -w" Image.gz DTC_EXT=dtc
 
       - name: Upload Kernel
         if: success()
