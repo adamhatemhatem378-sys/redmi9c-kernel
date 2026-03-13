@@ -12,7 +12,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 python3-dev device-tree-compiler
-          # Link python3 to python to fix missing python2 dependency
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
@@ -20,13 +19,14 @@ jobs:
           git config --global http.postBuffer 524288000
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix yylloc and Scripts Error
+      - name: Clean and Fix Source Code
         run: |
           cd kernel_source
-          # Fix multiple definition of yylloc
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-parser.tab.c_shipped || true
+          # Remove problematic yylloc lines to prevent 'multiple definition' or 'duplicate extern'
+          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.l
+          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-lexer.lex.c_shipped
+          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-parser.tab.c_shipped || true
+          sed -i '/YYLTYPE yylloc;/d' scripts/dtc/dtc-parser.tab.h_shipped || true
 
       - name: Configure and Build
         run: |
@@ -36,15 +36,15 @@ jobs:
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
-          # Auto-find dandelion defconfig
+          # Find the correct dandelion defconfig
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # Enable WiFi drivers
+          # Add WiFi drivers
           echo "CONFIG_RT2X00=y" >> .config
           echo "CONFIG_RT2800USB=y" >> .config
           
-          # Build Image.gz
+          # Build only the kernel image
           make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon" DTC_EXT=dtc
 
       - name: Upload Kernel Image
