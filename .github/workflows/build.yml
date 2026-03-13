@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Final Ultimate)
+name: Build Redmi 9C Kernel (LLD Fix)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler lld clang
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
@@ -21,12 +21,11 @@ jobs:
       - name: Force Fix Source
         run: |
           cd kernel_source
-          # Fix yylloc for modern compilers
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel (Blind Mode)
+      - name: Build Kernel (The Final Solution)
         run: |
           cd kernel_source
           export ARCH=arm64
@@ -36,16 +35,17 @@ jobs:
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # Force ignore everything and build
+          # Use LLD as the linker to solve the 'net/built-in.o' error
           make ARCH=arm64 -j$(nproc) \
+            LD=ld.lld \
             HOSTCFLAGS="-fcommon -w" \
             HOSTCXXFLAGS="-fcommon -w" \
             KCFLAGS="-fcommon -w -Wno-error -fno-stack-protector -fpermissive" \
             Image.gz DTC_EXT=dtc
 
-      - name: Upload Kernel
+      - name: Upload Kernel Image
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Final
+          name: Dandelion-Kernel-Success
           path: kernel_source/arch/arm64/boot/Image.gz
