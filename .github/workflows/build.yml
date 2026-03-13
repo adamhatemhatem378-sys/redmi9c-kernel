@@ -1,50 +1,48 @@
-name: Build Redmi 9C Kernel (Final Success)
+name: Build Redmi 9C Kernel (Final Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # بنستخدم 22.04 لأنها "أم" المترجمات القديمة ومشاكلها أقل
     runs-on: ubuntu-22.04 
 
     steps:
-      - name: Setup System
+      - name: Setup Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 lib32z1
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Clone Toolchain
-        run: |
-          # بننزل المترجم في فولدر ثابت وبسيط اسمه tc64
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $GITHUB_WORKSPACE/tc64
-
       - name: Clone Kernel Source
         run: |
-          # فرع Q هو اللي شغال ومضمون حتى لو أنت أندرويد 11
+          # تنزيل السورس أولاً
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Build Time
+      - name: Download Toolchain Inside Source
+        run: |
+          cd kernel_source
+          # تنزيل المترجم جوه فولدر السورس عشان المسار يبقى محلي 100%
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 tc64
+
+      - name: Build Kernel
         run: |
           cd kernel_source
           export ARCH=arm64
-          # المسار ده "دقيق بالمللي" عشان مطلعش No such file تاني
-          export CROSS_COMPILE=$GITHUB_WORKSPACE/tc64/bin/aarch64-linux-android-
+          # المسار هنا "local" يعني مفيش مجال للخطأ
+          export CROSS_COMPILE=$(pwd)/tc64/bin/aarch64-linux-android-
           
-          # تنظيف أي عك قديم
-          make clean
+          # إصلاح ملفات الـ scripts
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+          
           make dandelion_defconfig
-          
-          # السر في -fcommon عشان نعدي العداد اللي بيوقف عند 1758
-          make -j$(nproc) \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            KCFLAGS="-fcommon -w -Wno-error" \
-            Image.gz DTC_EXT=dtc
+          # استخدام -fcommon عشان نعدي أخطاء التعريفات والشبكة
+          make -j$(nproc) KCFLAGS="-fcommon -w -Wno-error" Image.gz DTC_EXT=dtc
 
-      - name: Upload Results
+      - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Dandelion_A11_Done
+          name: Kernel_Dandelion_A11
           path: kernel_source/arch/arm64/boot/Image.gz
