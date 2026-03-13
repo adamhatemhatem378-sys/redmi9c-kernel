@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Final GCC Attempt)
+name: Build Redmi 9C Kernel (Hyper-Stable)
 
 on:
   workflow_dispatch:
@@ -18,10 +18,10 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix Source Code
+      - name: Fix yylloc Definitive
         run: |
           cd kernel_source
-          # Fix yylloc for modern GCC
+          # This command fixes the duplicate/undeclared yylloc issue
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
@@ -32,16 +32,15 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # 1. Load default config
+          # Clean and load config
+          make ARCH=arm64 clean
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # 2. Disable Stack Protector (to avoid the previous Clang error)
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' .config
-          
-          # 3. Build using GCC and ignore warnings (The most stable path)
+          # The fix for Net/Built-in error: force common flags and ignore warnings
           make ARCH=arm64 -j$(nproc) \
             HOSTCFLAGS="-fcommon" \
+            HOSTCXXFLAGS="-fcommon" \
             KCFLAGS="-fcommon -w -Wno-error" \
             Image.gz DTC_EXT=dtc
 
