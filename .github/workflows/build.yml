@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (A11 Final)
+name: Build Redmi 9C Kernel (Final Absolute)
 
 on:
   workflow_dispatch:
@@ -8,39 +8,48 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Setup System
+      - name: Install Essentials
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 lib32z1
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Download GCC
+      - name: Clone Everything
         run: |
-          # تنزيل المترجم في فولدر ثابت بره وجع الدماغ بتاع الفولدرات المكررة
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $HOME/gcc64
-
-      - name: Clone Source
-        run: |
-          # الفرع ده هو اللي نفع معاك في الكلون قبل كدة
+          # تنزيل السورس والمترجم في خطوة واحدة لضمان الترتيب
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
+          cd kernel_source
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 tc64
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 tc32
 
-      - name: Build Time
+      - name: Hard-Fix Source Code
+        run: |
+          cd kernel_source
+          # إصلاح أخطاء الـ Lexer التي تظهر في الأنظمة الحديثة
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+
+      - name: Execute Build
         run: |
           cd kernel_source
           export ARCH=arm64
-          # استخدام $HOME بيضمن إن المسار ملوش علاقة بالفولدر اللي GitHub بيعمله
-          export CROSS_COMPILE=$HOME/gcc64/bin/aarch64-linux-android-
+          # استخدام المسار المحلي (PWD) ينهي تماماً كابوس "No such file"
+          export TC64_PATH=$(pwd)/tc64/bin/aarch64-linux-android-
+          export TC32_PATH=$(pwd)/tc32/bin/arm-linux-androideabi-
           
-          # تنظيف أي محاولة فاشلة قديمة
-          make clean
           make dandelion_defconfig
           
-          # تشغيل البناء مع حل مشكلة الـ net اللي وقفتنا زمان
-          make -j$(nproc) CROSS_COMPILE=$CROSS_COMPILE KCFLAGS="-fcommon -w" Image.gz DTC_EXT=dtc
+          # بناء الكيرنل مع تجاهل التحذيرات وحل مشكلة تكرار التعريفات (fcommon)
+          make -j$(nproc) \
+            CROSS_COMPILE=$TC64_PATH \
+            CROSS_COMPILE_ARM32=$TC32_PATH \
+            KCFLAGS="-fcommon -w -Wno-error" \
+            DTC_EXT=dtc \
+            Image.gz
 
       - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Dandelion_A11
+          name: Final_Kernel_Redmi9C
           path: kernel_source/arch/arm64/boot/Image.gz
