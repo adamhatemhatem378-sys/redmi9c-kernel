@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Legacy GCC Fix)
+name: Build Redmi 9C Kernel (Legacy Path Fix)
 
 on:
   workflow_dispatch:
@@ -11,12 +11,12 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
+          sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Clone Toolchain (The Key)
+      - name: Clone Toolchain
         run: |
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
+          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $GITHUB_WORKSPACE/toolchain
 
       - name: Clone Kernel Source
         run: |
@@ -29,18 +29,18 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel (Legacy Mode)
+      - name: Build Kernel (Absolute Path)
         run: |
           cd kernel_source
           export ARCH=arm64
+          # تحديد المسار الكامل للمترجم بدقة
           export CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/aarch64-linux-android-
           
-          # Load config
-          CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
-          make ARCH=arm64 $CONF_FILE
+          make ARCH=arm64 dandelion_defconfig
           
-          # Build with old GCC flags
-          make ARCH=arm64 -j$(nproc) \
+          # تقليل عدد الأنوية لـ 2 عشان نتفادى أي تعليق في السيرفر ونشوف الأخطاء بوضوح لو حصلت
+          make ARCH=arm64 -j2 \
+            CROSS_COMPILE=$CROSS_COMPILE \
             KCFLAGS="-fcommon -w -Wno-error" \
             Image.gz DTC_EXT=dtc
 
@@ -48,5 +48,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Legacy
+          name: Dandelion-Kernel-Legacy-Success
           path: kernel_source/arch/arm64/boot/Image.gz
