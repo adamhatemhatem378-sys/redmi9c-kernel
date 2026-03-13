@@ -21,11 +21,12 @@ jobs:
       - name: Configure Kernel Drivers
         run: |
           cd kernel_source
-          # Clean any previous failed attempts
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
           make clean
-          # Use the core defconfig
-          make dandelion_user_defconfig
-          # Enable WiFi drivers manually in the .config file directly
+          # Force ARCH=arm64 here to find the correct config file
+          make ARCH=arm64 dandelion_user_defconfig
+          # Enable WiFi drivers directly in .config
           echo "CONFIG_RT2X00=y" >> .config
           echo "CONFIG_RT2800USB=y" >> .config
 
@@ -34,17 +35,11 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          # The FIX: Build only the Image.gz and ignore dtbs checks for now
-          make -j$(nproc) Image.gz
-          
-          # After Image.gz is done, we try to build dtbs separately without the 'check'
-          make -j$(nproc) dtbs || echo "DTBS failed but we have the Image"
+          # Build Image.gz and bypass dtbo_check
+          make ARCH=arm64 -j$(nproc) Image.gz DTC_EXT=dtc
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: Dandelion-Kernel-Result
-          path: |
-            kernel_source/arch/arm64/boot/Image.gz
-            kernel_source/arch/arm64/boot/dts/mediatek/*.dtb
+          path: kernel_source/arch/arm64/boot/Image.gz
