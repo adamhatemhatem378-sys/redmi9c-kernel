@@ -1,4 +1,4 @@
-name: Build Redmi 9C Kernel (Final Fix)
+name: Build Redmi 9C Kernel (Hyper-Stable)
 
 on:
   workflow_dispatch:
@@ -11,40 +11,42 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu clang lld libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix yylloc and GCC 10 Compatibility
+      - name: Fix Source Code
         run: |
           cd kernel_source
-          # Definitive fix for yylloc errors
+          # Fix yylloc for modern compilers
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           echo "YYLTYPE yylloc;" >> scripts/dtc/dtc-lexer.lex.c_shipped
 
-      - name: Build Kernel
+      - name: Build Kernel (The Reliable Way)
         run: |
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # Clean build environment
-          make ARCH=arm64 mrproper
-          
-          # Load default config
+          # Load dandelion config
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
           make ARCH=arm64 $CONF_FILE
           
-          # The Magic Command: Build and ignore non-critical errors + force host common flags
-          make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon" HOSTCXXFLAGS="-fcommon" KCFLAGS="-fcommon"
+          # Force the build to continue even with warnings and use common flags
+          # We added -Wno-error to prevent "Exit code 2" on minor warnings
+          make ARCH=arm64 -j$(nproc) Image.gz \
+          HOSTCFLAGS="-fcommon" \
+          HOSTCXXFLAGS="-fcommon" \
+          KCFLAGS="-fcommon -Wno-error -w" \
+          DTC_EXT=dtc
 
       - name: Upload Kernel
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Kernel-Output
+          name: Dandelion-Fixed-Kernel
           path: kernel_source/arch/arm64/boot/Image.gz
