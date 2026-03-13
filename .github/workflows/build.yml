@@ -5,25 +5,25 @@ on:
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python2
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu libssl-dev libncurses5-dev flex bison git python2 device-tree-compiler
 
       - name: Clone Kernel Source
         run: |
+          git config --global http.postBuffer 524288000
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Force Fix yylloc and Scripts
+      - name: Fix yylloc and Scripts Error
         run: |
           cd kernel_source
-          # Fix multiple definition of yylloc
+          # Fix multiple definition of yylloc for modern GCC
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-          # Fix for older kernels on newer GCC
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-parser.tab.c_shipped || true
 
       - name: Configure and Build
@@ -31,19 +31,24 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          # Use -fcommon flag to ignore the multiple definition error
+          # Allow multiple definitions during compilation
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
-          # Find defconfig
+          # Auto-find the dandelion defconfig
           CONF_FILE=$(find arch/arm64/configs/ -name "*dandelion*" | head -n 1 | xargs basename)
+          echo "Using config: $CONF_FILE"
           
           make ARCH=arm64 $CONF_FILE
           
-          # Build Image.gz directly
-          make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon"
+          # Enable WiFi drivers in .config
+          echo "CONFIG_RT2X00=y" >> .config
+          echo "CONFIG_RT2800USB=y" >> .config
+          
+          # Start building the Image.gz
+          make ARCH=arm64 -j$(nproc) Image.gz HOSTCFLAGS="-fcommon" DTC_EXT=dtc
 
-      - name: Upload Output
+      - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: Dandelion-Kernel-Final
