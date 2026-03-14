@@ -1,47 +1,47 @@
-name: Build Redmi 9C Kernel (System Final)
+name: Build Redmi 9C Kernel (Final Bypass)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # بيئة مستقرة وسريعة جداً
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Setup System
         run: |
           sudo apt-get update
-          # تثبيت المترجمات الرسمية مباشرة من مستودعات Ubuntu
           sudo apt-get install -y build-essential bc libssl-dev flex bison git python3 device-tree-compiler gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Clone Kernel Source
         run: |
-          # تنزيل السورس فقط (بدون مترجمات خارجية) لتوفير الوقت
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fix Kernel Scripts
+      - name: Hard-Fix Source & Warnings
         run: |
           cd kernel_source
-          # إصلاح أخطاء التوافق مع الأنظمة الحديثة
+          # إصلاح أخطاء الـ Lexer المشهورة في كود شاومي
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+          # منع المترجم من اعتبار التحذيرات أخطاء (إصلاح الـ Exit Code 2)
+          sed -i 's/-Werror//g' Makefile
+          sed -i 's/-Werror//g' arch/arm64/Makefile
 
       - name: Build Kernel
         run: |
           cd kernel_source
           export ARCH=arm64
-          # استخدام مترجمات النظام المثبتة في /usr/bin/ تلقائياً
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           
           make dandelion_defconfig
           
-          # البناء مع معالجة أخطاء التعريفات المكررة (fcommon)
+          # السر في KCFLAGS: -w بتسكت التحذيرات تماماً، و -fcommon بتحل تكرار التعريفات
           make -j$(nproc) \
             CROSS_COMPILE=$CROSS_COMPILE \
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            KCFLAGS="-fcommon -w" \
+            KCFLAGS="-fcommon -w -Wno-error=unused-but-set-variable -Wno-error=maybe-uninitialized" \
             DTC_EXT=dtc \
             Image.gz
 
@@ -49,5 +49,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Redmi9C_SystemGCC
+          name: Kernel_Redmi9C_Stable
           path: kernel_source/arch/arm64/boot/Image.gz
