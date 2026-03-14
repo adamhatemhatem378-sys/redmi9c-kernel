@@ -1,39 +1,35 @@
-name: Build Redmi 9C (Docker Fix)
+name: Fast Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # أي نسخة مش هتفرق لأننا هنبني جوه Docker
+    runs-on: ubuntu-latest # ده هيبدأ في أقل من 10 ثواني
 
     steps:
-      - name: Clone Source
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc libssl-dev flex bison git gcc-aarch64-linux-gnu
+
+      - name: Clone
         run: |
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Build in Docker Container
+      - name: Fast Fix & Build
         run: |
-          # هنستخدم حاوية فيها بيئة بناء أندرويد كاملة وجاهزة
-          docker run --rm -v $(pwd):/work -w /work/kernel_source \
-          fr3akyphantom/droid-builder:latest /bin/bash -c "
-            # إصلاحات الكود الإلزامية
-            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-            
-            # تحميل المترجم جوه الحاوية
-            git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 /toolchain
-            
-            export ARCH=arm64
-            export CROSS_COMPILE=/toolchain/bin/aarch64-linux-android-
-            
-            make dandelion_defconfig
-            
-            # تعطيل الحماية اللي وقفتنا في كل الصور اللي فاتت
-            scripts/config --disable CONFIG_CC_STACKPROTECTOR_STRONG
-            
-            make -j$(nproc) KCFLAGS='-fcommon -w' Image.gz
-          "
+          cd kernel_source
+          # حذف الحماية اللي بتوقف البناء في ثانية واحدة
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/\# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/dandelion_defconfig
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+          
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          
+          make dandelion_defconfig
+          # الـ KCFLAGS دي هي اللي هتخليه يطير ويعدي التحذيرات
+          make -j$(nproc) KCFLAGS="-fcommon -w" Image.gz
 
       - name: Upload Kernel
         uses: actions/upload-artifact@v4
