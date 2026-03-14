@@ -1,50 +1,53 @@
-name: Build Redmi 9C Kernel (Final Success)
+name: Build Redmi 9C Kernel (Absolute Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # نستخدم النسخة المتاحة والمدعومة
+    runs-on: ubuntu-latest
+    # استخدام حاوية Ubuntu 18.04 جاهزة عشان المكتبات القديمة تكون موجودة
+    container:
+      image: ubuntu:18.04
 
     steps:
-      - name: Setup System & Libraries
+      - name: Install System Dependencies
         run: |
-          sudo apt-get update
-          # تثبيت المكتبات اللي كانت ناقصة في صورك القديمة وتسببت في فشل الـ GCC
-          sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 libtinfo5
-          sudo ln -sf /usr/bin/python3 /usr/bin/python
+          apt-get update
+          apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python device-tree-compiler libncurses5 wget
+          # في 18.04 بايثون القديم هو الأساس، وده اللي الكيرنل عاوزه
 
-      - name: Clone Everything Locally
+      - name: Clone Everything
         run: |
-          # تنزيل السورس والمترجم في نفس الفولدر لضمان المسارات
+          # تنزيل السورس والمترجم في أماكن ثابتة
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
-          cd kernel_source
           git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 tc64
           git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 tc32
 
-      - name: Hard-Fix Scripts
-        run: |
-          cd kernel_source
-          # حل مشكلة الـ Lexer اللي ظهرت في صورك الأولى
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-
-      - name: Build Time
+      - name: Build Kernel
         run: |
           cd kernel_source
           export ARCH=arm64
-          # تعريف المسار بشكل مباشر ومطلق (Absolute Path)
-          export CROSS_COMPILE=$(pwd)/tc64/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$(pwd)/tc32/bin/arm-linux-androideabi-
+          # استخدام المسارات المطلقة (Absolute Paths)
+          export CROSS_COMPILE=$GITHUB_WORKSPACE/tc64/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$GITHUB_WORKSPACE/tc32/bin/arm-linux-androideabi-
+          
+          # إصلاح أخطاء الـ scripts قبل البناء
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           
           make dandelion_defconfig
-          # إضافة -fcommon ضرورية لتخطي أخطاء تكرار التعريفات في كود شاومي
-          make -j$(nproc) KCFLAGS="-fcommon -w" Image.gz DTC_EXT=dtc
+          
+          # البناء النهائي مع تجاوز أخطاء الشبكة المعروفة
+          make -j$(nproc) \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            KCFLAGS="-fcommon -w" \
+            Image.gz DTC_EXT=dtc
 
-      - name: Upload Finished Kernel
+      - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Redmi9C_A11
+          name: Final_Kernel_Redmi9C
           path: kernel_source/arch/arm64/boot/Image.gz
