@@ -1,54 +1,42 @@
-name: Build Redmi 9C Kernel (Final Strike)
+name: Build Redmi 9C (Docker Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04 # بيئة متوازنة
+    runs-on: ubuntu-latest # أي نسخة مش هتفرق لأننا هنبني جوه Docker
 
     steps:
-      - name: Install System Dependencies
+      - name: Clone Source
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc libssl-dev flex bison git python3 device-tree-compiler libncurses5
-          sudo ln -sf /usr/bin/python3 /usr/bin/python
-
-      - name: Clone Toolchain & Source
-        run: |
-          # تحميل المترجم الرسمي المتوافق 100% مع Redmi 9C
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $HOME/gcc64
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Force Fix Source Code
+      - name: Build in Docker Container
         run: |
-          cd kernel_source
-          # 1. إصلاح ملفات الـ scripts المشهورة
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
-          # 2. تعطيل اختبار الـ Stack Protector اللي بيفشل في الـ Action
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/dandelion_defconfig
-          # 3. حذف الـ -Werror عشان التحذيرات متبوظش الـ Build
-          find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
-
-      - name: Execute Build
-        run: |
-          cd kernel_source
-          export ARCH=arm64
-          export CROSS_COMPILE=$HOME/gcc64/bin/aarch64-linux-android-
-          
-          make dandelion_defconfig
-          
-          # البناء باستخدام المترجم المتوافق ومعطلين فيه الأخطاء الصارمة
-          make -j$(nproc) \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            KCFLAGS="-fcommon -w" \
-            DTC_EXT=dtc \
-            Image.gz
+          # هنستخدم حاوية فيها بيئة بناء أندرويد كاملة وجاهزة
+          docker run --rm -v $(pwd):/work -w /work/kernel_source \
+          fr3akyphantom/droid-builder:latest /bin/bash -c "
+            # إصلاحات الكود الإلزامية
+            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
+            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
+            
+            # تحميل المترجم جوه الحاوية
+            git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 /toolchain
+            
+            export ARCH=arm64
+            export CROSS_COMPILE=/toolchain/bin/aarch64-linux-android-
+            
+            make dandelion_defconfig
+            
+            # تعطيل الحماية اللي وقفتنا في كل الصور اللي فاتت
+            scripts/config --disable CONFIG_CC_STACKPROTECTOR_STRONG
+            
+            make -j$(nproc) KCFLAGS='-fcommon -w' Image.gz
+          "
 
       - name: Upload Kernel
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Dandelion_Final
+          name: Kernel_Redmi9C_Docker
           path: kernel_source/arch/arm64/boot/Image.gz
