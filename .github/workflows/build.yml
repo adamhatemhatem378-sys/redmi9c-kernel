@@ -1,43 +1,52 @@
-name: Build Redmi 9C Kernel (Speed Fix)
+name: Build Redmi 9C Kernel (Proton Clang)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04 # النسخة دي سريعة وبدء التشغيل فيها فوري
+    runs-on: ubuntu-latest # أسرع سيرفرات متاحة
 
     steps:
-      - name: Install Essentials
+      - name: Install Build Tools
         run: |
           sudo apt-get update
-          # تثبيت المكتبات اللي بتخلي المترجم "ينطق" ويشتغل
-          sudo apt-get install -y build-essential bc libssl-dev libncurses5-dev flex bison git python3 device-tree-compiler libncurses5 libtinfo5
-          sudo ln -sf /usr/bin/python3 /usr/bin/python
+          sudo apt-get install -y build-essential bc libssl-dev flex bison git python3 device-tree-compiler
 
-      - name: Fast Clone
+      - name: Clone Source & Proton Clang
         run: |
-          # تحميل السورس والمترجم في خطوة واحدة لتقليل الوقت
+          # تنزيل سورس الكيرنل
           git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
-          git clone --depth 1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $HOME/tc64
+          # تنزيل مترجم Proton Clang (أسرع وأخف)
+          git clone --depth 1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Build
+      - name: Build Kernel
         run: |
           cd kernel_source
-          # إصلاح ملفات الـ scripts عشان تقبل الـ Build في البيئة الجديدة
+          # إصلاح ملفات الـ scripts
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c_shipped
           
+          export PATH=$(pwd)/../clang/bin:$PATH
           export ARCH=arm64
-          export CROSS_COMPILE=$HOME/tc64/bin/aarch64-linux-android-
+          export SUBARCH=arm64
           
+          # إعدادات البناء باستخدام Clang
           make dandelion_defconfig
-          # إضافة -fcommon هي اللي هتعدي مرحلة الـ drivers والـ net اللي وقفتنا زمان
-          make -j$(nproc) KCFLAGS="-fcommon -w" Image.gz DTC_EXT=dtc
+          make -j$(nproc) \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            KCFLAGS="-fcommon -w" \
+            Image.gz DTC_EXT=dtc
 
-      - name: Upload Result
+      - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Dandelion_A11
+          name: Kernel_Proton_Redmi9C
           path: kernel_source/arch/arm64/boot/Image.gz
