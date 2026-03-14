@@ -1,38 +1,31 @@
-name: Fast Build
+name: Speed Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # ده هيبدأ في أقل من 10 ثواني
+    runs-on: ubuntu-latest # هيبدأ فوراً
 
     steps:
-      - name: Install Tools
+      - name: Setup Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc libssl-dev flex bison git gcc-aarch64-linux-gnu
 
       - name: Clone
-        run: |
-          git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
+        run: git clone --depth 1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel_source
 
-      - name: Fast Fix & Build
+      - name: Final Fix & Run
         run: |
           cd kernel_source
-          # حذف الحماية اللي بتوقف البناء في ثانية واحدة
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/\# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/dandelion_defconfig
+          # تعطيل الحماية اللي بتفشل في الـ Action يدوياً
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/dandelion_defconfig
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l
           
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
           make dandelion_defconfig
-          # الـ KCFLAGS دي هي اللي هتخليه يطير ويعدي التحذيرات
+          # الـ -w هتخليه يتجاهل التحذيرات ويكمل بناء للأخر
           make -j$(nproc) KCFLAGS="-fcommon -w" Image.gz
-
-      - name: Upload Kernel
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel_Redmi9C_Docker
-          path: kernel_source/arch/arm64/boot/Image.gz
